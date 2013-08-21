@@ -21,6 +21,13 @@ func registerLocal(w dns.ResponseWriter, req *dns.Msg) {
 
 	var a net.IP
 	pieces := dns.SplitDomainName(req.Question[0].Name)
+
+	if len(pieces) < 3 {
+		// tried to set the root name - write empty reply and return
+		w.WriteMsg(m)
+		return
+	}
+
 	host := pieces[len(pieces)-3]
 
 	if ip, ok := w.RemoteAddr().(*net.TCPAddr); ok {
