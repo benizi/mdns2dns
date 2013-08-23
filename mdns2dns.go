@@ -6,8 +6,10 @@ import (
 	"github.com/miekg/dns"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"syscall"
 )
 
@@ -85,6 +87,78 @@ func handleLocal(w dns.ResponseWriter, req *dns.Msg) {
 	w.WriteMsg(m)
 }
 
+func httpRemoteIP(r *http.Request) string {
+	for _, header := range([]string{"X-Real-Ip", "X-Forwarded-For"}) {
+		addr, found := r.Header[header]
+		if found {
+			return addr[0]
+		}
+	}
+	return "1.2.3.4"
+}
+
+func handleHttpListing(w http.ResponseWriter, r *http.Request) {
+	log.Println("Serving host listing")
+	fmt.Fprintf(w, "<html><head><title>Currently registered hosts</title></head><body>\n")
+	fmt.Fprintf(w, "<form action=\"/register\" method=\"POST\">")
+	fmt.Fprintf(w, "<input name=\"name\" type=\"text\" placeholder=\"new host\"/>")
+	fmt.Fprintf(w, "<input name=\"ip\" type=\"text\" value=\"%s\"/>", httpRemoteIP(r))
+	fmt.Fprintf(w, "<input name=\"submit\" type=\"submit\" value=\"register\"/>")
+	fmt.Fprintf(w, "</form>")
+
+	if len(registeredNames) == 0 {
+		fmt.Fprintf(w, "<p>No registered names</p>")
+	} else {
+		var names []string
+		for k := range(registeredNames) {
+			names = append(names, k)
+		}
+		sort.Strings(names)
+		fmt.Fprintf(w, "<table><thead><tr><th>Name</th><th>IP</th></thead><tbody>")
+		for _, name := range(names) {
+			if ip, ok := registeredNames[name]; ok {
+				fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td></tr>", name, ip.String())
+			}
+		}
+		fmt.Fprintf(w, "</tbody></table>")
+	}
+	fmt.Fprintf(w, "</body>\n")
+}
+
+func handleHttpRegistration(w http.ResponseWriter, r *http.Request) {
+	log.Println("Attempting HTTP registration")
+	err := r.ParseForm()
+	if err == nil {
+		name, foundName := r.Form["name"]
+		if foundName && len(name) == 0 {
+			foundName = false
+		}
+		ipText, foundIP := r.Form["ip"]
+		if foundIP && len(ipText) == 0 {
+			foundIP = false
+		}
+		if foundName && foundIP {
+			ip := net.ParseIP(ipText[0])
+			if err == nil {
+				registeredNames[name[0]] = ip
+				log.Println("Success: %s => %v", name, ip)
+			} else {
+				fmt.Fprintf(w, "Bad IP? %v (err: %s)\n", ipText, err.Error())
+			}
+		} else {
+			if !foundName {
+				fmt.Fprintf(w, "Missing name\n")
+			}
+			if !foundIP {
+				fmt.Fprintf(w, "Missing ip\n")
+			}
+		}
+	} else {
+		fmt.Fprintf(w, "Fail: %s\n", err.Error())
+	}
+	http.Redirect(w, r, "/", 303)
+}
+
 func serve(proto string, port int) {
 	log.Printf("Attempting to serve on port %d over %s\n", port, proto)
 	err := dns.ListenAndServe(fmt.Sprintf(":%d", port), proto, nil)
@@ -98,6 +172,7 @@ func main() {
 
 	port := flag.Int("port", 9753, "Port to serve from")
 	registerAt := flag.String("register", "in", "Host at which to register")
+	httpPort := flag.Int("http", 0, "Port for HTTP serving. 0 = default = none")
 	flag.Parse()
 
 	regName := fmt.Sprintf("%s.4m.", *registerAt)
@@ -109,6 +184,16 @@ func main() {
 	dns.HandleFunc("4m.", handleLocal)
 	go serve("tcp4", *port)
 	go serve("udp4", *port)
+
+	if *httpPort != 0 {
+		log.Printf("Serving HTTP on port %d\n", *httpPort)
+		http.HandleFunc("/", handleHttpListing)
+		http.HandleFunc("/register", handleHttpRegistration)
+		err := http.ListenAndServe(fmt.Sprintf(":%d", *httpPort), nil)
+		if err != nil {
+			log.Fatal("Failed to serve over HTTP: %v\n", err.Error())
+		}
+	}
 
 	sig := make(chan os.Signal)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
