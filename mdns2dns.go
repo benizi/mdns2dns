@@ -14,6 +14,7 @@ import (
 )
 
 var registeredNames map[string]net.IP
+var tld, registration string
 
 func registerLocal(w dns.ResponseWriter, req *dns.Msg) {
 	log.Printf("Trying to register %v\n", req.Question[0].Name)
@@ -170,18 +171,20 @@ func serve(proto string, port int) {
 func main() {
 	registeredNames = make(map[string]net.IP)
 
+	tldFlag := flag.String("tld", "host", "TLD to use")
 	port := flag.Int("port", 9753, "Port to serve from")
 	registerAt := flag.String("register", "in", "Host at which to register")
 	httpPort := flag.Int("http", 0, "Port for HTTP serving. 0 = default = none")
 	flag.Parse()
 
-	regName := fmt.Sprintf("%s.4m.", *registerAt)
+	tld = fmt.Sprintf("%s.", *tldFlag)
+	registration = fmt.Sprintf("%s.%s", *registerAt, tld)
 
 	log.Printf("Serving on port %d\n", *port)
-	log.Printf("Register hosts at (whatever).%s\n", regName)
+	log.Printf("Register hosts at (whatever).%s\n", registration)
 
-	dns.HandleFunc(regName, registerLocal)
-	dns.HandleFunc("4m.", handleLocal)
+	dns.HandleFunc(registration, registerLocal)
+	dns.HandleFunc(tld, handleLocal)
 	go serve("tcp4", *port)
 	go serve("udp4", *port)
 
