@@ -11,10 +11,23 @@ import (
 	"os/signal"
 	"sort"
 	"syscall"
+	"time"
 )
 
-var registeredNames map[string]net.IP
+type Registration struct {
+   ip net.IP
+   registered time.Time
+}
+
+var registeredNames map[string]Registration
 var tld, registration string
+
+func registerName(name string, ip net.IP) {
+	registeredNames[name] = Registration{
+		ip: ip,
+		registered: time.Now(),
+	}
+}
 
 func registerLocal(w dns.ResponseWriter, req *dns.Msg) {
 	log.Printf("Trying to register %v\n", req.Question[0].Name)
@@ -35,14 +48,14 @@ func registerLocal(w dns.ResponseWriter, req *dns.Msg) {
 
 	if ip, ok := w.RemoteAddr().(*net.TCPAddr); ok {
 		a = ip.IP
-		registeredNames[host] = a
+		registerName(host, a)
 		log.Printf("TCPAddr registeredNames[%s] => %v\n", host, a)
 	} else if ip, ok := w.RemoteAddr().(*net.UDPAddr); ok {
 		a = ip.IP
-		registeredNames[host] = a
+		registerName(host, a)
 		log.Printf("UDPAddr registeredNames[%s] => %v\n", host, a)
 	} else {
-		registeredNames[host] = net.ParseIP("1.2.3.4")
+		registerName(host, net.ParseIP("1.2.3.4"))
 		log.Println("Failed to find address")
 		log.Printf("Setting anyway: registeredNames[%s] => %v\n", host, a)
 	}
@@ -70,7 +83,7 @@ func handleLocal(w dns.ResponseWriter, req *dns.Msg) {
 	if req.Question[0].Qtype == dns.TypeA {
 		pieces := dns.SplitDomainName(req.Question[0].Name)
 		if len(pieces) >= 2 {
-			if ip, found := registeredNames[pieces[len(pieces)-2]]; found {
+			if entry, found := registeredNames[pieces[len(pieces)-2]]; found {
 				var rr dns.RR
 				rr = new(dns.A)
 				rr.(*dns.A).Hdr = dns.RR_Header{
@@ -79,7 +92,7 @@ func handleLocal(w dns.ResponseWriter, req *dns.Msg) {
 					Class: dns.ClassINET,
 					Ttl: 60,
 				}
-				rr.(*dns.A).A = ip
+				rr.(*dns.A).A = entry.ip
 				m.Answer = append(m.Answer, rr)
 			}
 		}
@@ -115,10 +128,12 @@ func handleHttpListing(w http.ResponseWriter, r *http.Request) {
 			names = append(names, k)
 		}
 		sort.Strings(names)
-		fmt.Fprintf(w, "<table><thead><tr><th>Name</th><th>IP</th></thead><tbody>")
+		fmt.Fprintf(w, "<table><thead><tr><th>Name</th><th>IP</th><th>Time</th></thead><tbody>")
 		for _, name := range(names) {
-			if ip, ok := registeredNames[name]; ok {
-				fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td></tr>", name, ip.String())
+			if entry, ok := registeredNames[name]; ok {
+				fmt.Fprintf(w, "<tr><td>%s</td>", name)
+				fmt.Fprintf(w, "<td>%s</td>", entry.ip.String())
+				fmt.Fprintf(w, "<td>%v</td></tr>", entry.registered.String())
 			}
 		}
 		fmt.Fprintf(w, "</tbody></table>")
@@ -141,7 +156,7 @@ func handleHttpRegistration(w http.ResponseWriter, r *http.Request) {
 		if foundName && foundIP {
 			ip := net.ParseIP(ipText[0])
 			if err == nil {
-				registeredNames[name[0]] = ip
+				registerName(name[0], ip)
 				log.Println("Success: %s => %v", name, ip)
 			} else {
 				fmt.Fprintf(w, "Bad IP? %v (err: %s)\n", ipText, err.Error())
@@ -169,7 +184,7 @@ func serve(proto string, port int) {
 }
 
 func main() {
-	registeredNames = make(map[string]net.IP)
+	registeredNames = make(map[string]Registration)
 
 	tldFlag := flag.String("tld", "host", "TLD to use")
 	port := flag.Int("port", 9753, "Port to serve from")
