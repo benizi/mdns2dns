@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/gob"
 	"flag"
 	"fmt"
 	"github.com/miekg/dns"
@@ -20,13 +21,14 @@ type Registration struct {
 }
 
 var registeredNames map[string]Registration
-var tld, registration string
+var tld, registration, hostsFile string
 
 func registerName(name string, ip net.IP) {
 	registeredNames[name] = Registration{
 		IP: ip,
 		Registered: time.Now(),
 	}
+	saveHostsFile()
 }
 
 func registerLocal(w dns.ResponseWriter, req *dns.Msg) {
@@ -191,6 +193,67 @@ func serveHTTP(port int) {
 	}
 }
 
+func saveHostsFile() error {
+	log.Println("Saving hosts to", hostsFile)
+
+	file, err := os.OpenFile(hostsFile, os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		log.Printf("Failed to save hosts file: %s\n", err.Error())
+		return err
+	}
+
+	defer file.Close()
+
+	encoder := gob.NewEncoder(file)
+	encoder.Encode(registeredNames)
+	encoder.Encode(tld)
+	encoder.Encode(registration)
+
+	log.Println("Saved hosts file")
+
+	return nil
+}
+
+func loadHostsFile() error {
+	log.Println("Loading hosts from", hostsFile)
+
+	fileinfo, err := os.Stat(hostsFile)
+	if err != nil {
+		log.Println("Error loading hosts file:", err.Error())
+		return err
+	}
+
+	if fileinfo.Size() == 0 {
+		log.Println("Hosts file is empty")
+		return nil
+	}
+
+	file, err := os.OpenFile(hostsFile, os.O_RDONLY, 0600)
+	if err != nil {
+		log.Println("Failed to load hosts file:", err.Error())
+		return err
+	}
+
+	defer file.Close()
+
+	decoder := gob.NewDecoder(file)
+	err = decoder.Decode(&registeredNames)
+	if err != nil {
+		log.Println("Failed to decode registeredNames:", err.Error())
+	}
+	err = decoder.Decode(&tld)
+	if err != nil {
+		log.Println("Failed to decode tld:", err.Error())
+	}
+	err = decoder.Decode(&registration)
+	if err != nil {
+		log.Println("Failed to decode registration:", err.Error())
+	}
+
+	log.Printf("Loaded %d hosts from %s\n", len(registeredNames), hostsFile)
+	return nil
+}
+
 func main() {
 	registeredNames = make(map[string]Registration)
 
@@ -198,10 +261,16 @@ func main() {
 	port := flag.Int("port", 9753, "Port to serve from")
 	registerAt := flag.String("register", "in", "Host at which to register")
 	httpPort := flag.Int("http", 0, "Port for HTTP serving. 0 = default = none")
+	hostsFlag := flag.String("hosts", "saved.hosts", "File for loading/saving hosts")
 	flag.Parse()
 
 	tld = fmt.Sprintf("%s.", *tldFlag)
 	registration = fmt.Sprintf("%s.%s", *registerAt, tld)
+
+	if len(*hostsFlag) > 0 {
+		hostsFile = *hostsFlag
+		loadHostsFile()
+	}
 
 	log.Printf("Register hosts at (whatever).%s\n", registration)
 
@@ -224,6 +293,7 @@ infiniteloop:
 		select {
 		case s := <-sig:
 			fmt.Printf("Signal (%d) received, stopping\n", s)
+			saveHostsFile()
 			break infiniteloop
 		}
 	}
