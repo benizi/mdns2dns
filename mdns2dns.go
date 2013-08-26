@@ -110,6 +110,11 @@ func httpRemoteIP(r *http.Request) string {
 			return addr[0]
 		}
 	}
+
+	addr, err := net.ResolveTCPAddr("tcp4", r.RemoteAddr)
+	if err == nil {
+		return addr.IP.String()
+	}
 	return "1.2.3.4"
 }
 
