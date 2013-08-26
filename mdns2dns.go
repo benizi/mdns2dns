@@ -15,8 +15,8 @@ import (
 )
 
 type Registration struct {
-   ip net.IP
-   registered time.Time
+   IP net.IP
+   Registered time.Time
 }
 
 var registeredNames map[string]Registration
@@ -24,8 +24,8 @@ var tld, registration string
 
 func registerName(name string, ip net.IP) {
 	registeredNames[name] = Registration{
-		ip: ip,
-		registered: time.Now(),
+		IP: ip,
+		Registered: time.Now(),
 	}
 }
 
@@ -92,7 +92,7 @@ func handleLocal(w dns.ResponseWriter, req *dns.Msg) {
 					Class: dns.ClassINET,
 					Ttl: 60,
 				}
-				rr.(*dns.A).A = entry.ip
+				rr.(*dns.A).A = entry.IP
 				m.Answer = append(m.Answer, rr)
 			}
 		}
@@ -132,8 +132,8 @@ func handleHttpListing(w http.ResponseWriter, r *http.Request) {
 		for _, name := range(names) {
 			if entry, ok := registeredNames[name]; ok {
 				fmt.Fprintf(w, "<tr><td>%s</td>", name)
-				fmt.Fprintf(w, "<td>%s</td>", entry.ip.String())
-				fmt.Fprintf(w, "<td>%v</td></tr>", entry.registered.String())
+				fmt.Fprintf(w, "<td>%s</td>", entry.IP.String())
+				fmt.Fprintf(w, "<td>%v</td></tr>", entry.Registered.String())
 			}
 		}
 		fmt.Fprintf(w, "</tbody></table>")
