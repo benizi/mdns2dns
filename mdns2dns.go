@@ -175,11 +175,19 @@ func handleHttpRegistration(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", 303)
 }
 
-func serve(proto string, port int) {
-	log.Printf("Attempting to serve on port %d over %s\n", port, proto)
+func serveDNS(proto string, port int) {
+	log.Printf("Serving DNS on port %d over %s\n", port, proto)
 	err := dns.ListenAndServe(fmt.Sprintf(":%d", port), proto, nil)
 	if err != nil {
 		log.Fatal("Failed to set up %v server: %v\n", proto, err.Error())
+	}
+}
+
+func serveHTTP(port int) {
+	log.Printf("Serving HTTP on port %d\n", port)
+	err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+	if err != nil {
+		log.Fatal("Failed to serve over HTTP: %v\n", err.Error())
 	}
 }
 
@@ -195,22 +203,17 @@ func main() {
 	tld = fmt.Sprintf("%s.", *tldFlag)
 	registration = fmt.Sprintf("%s.%s", *registerAt, tld)
 
-	log.Printf("Serving on port %d\n", *port)
 	log.Printf("Register hosts at (whatever).%s\n", registration)
 
 	dns.HandleFunc(registration, registerLocal)
 	dns.HandleFunc(tld, handleLocal)
-	go serve("tcp4", *port)
-	go serve("udp4", *port)
+	go serveDNS("tcp4", *port)
+	go serveDNS("udp4", *port)
 
 	if *httpPort != 0 {
-		log.Printf("Serving HTTP on port %d\n", *httpPort)
 		http.HandleFunc("/", handleHttpListing)
 		http.HandleFunc("/register", handleHttpRegistration)
-		err := http.ListenAndServe(fmt.Sprintf(":%d", *httpPort), nil)
-		if err != nil {
-			log.Fatal("Failed to serve over HTTP: %v\n", err.Error())
-		}
+		go serveHTTP(*httpPort)
 	}
 
 	sig := make(chan os.Signal)
