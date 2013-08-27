@@ -164,7 +164,7 @@ func handleHttpRegistration(w http.ResponseWriter, r *http.Request) {
 			ip := net.ParseIP(ipText[0])
 			if err == nil {
 				registerName(name[0], ip)
-				log.Println("Success: %s => %v", name, ip)
+				log.Printf("Success: %s => %v\n", name, ip)
 			} else {
 				fmt.Fprintf(w, "Bad IP? %v (err: %s)\n", ipText, err.Error())
 			}
