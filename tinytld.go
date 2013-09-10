@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/miekg/dns"
+	"html/template"
 	"log"
 	"net"
 	"net/http"
@@ -136,11 +137,22 @@ func handleHttpListing(w http.ResponseWriter, r *http.Request) {
 		}
 		sort.Strings(names)
 		fmt.Fprintf(w, "<table><thead><tr><th>Name</th><th>IP</th><th>Time</th></thead><tbody>")
-		for _, name := range(names) {
-			if entry, ok := registeredNames[name]; ok {
-				fmt.Fprintf(w, "<tr><td>%s</td>", name)
-				fmt.Fprintf(w, "<td>%s</td>", entry.IP.String())
-				fmt.Fprintf(w, "<td>%v</td></tr>", entry.Registered.String())
+		rowTemplate := template.New("list row")
+		rowTemplate, err := rowTemplate.Parse("<tr><td>{{.Name}}</td><td>{{.IP}}</td><td>{{.Registered}}</td></tr>")
+		if err == nil {
+			for _, name := range(names) {
+				if entry, ok := registeredNames[name]; ok {
+					data := struct {
+						Name string
+						IP string
+						Registered string
+					}{
+						name,
+						entry.IP.String(),
+						entry.Registered.String(),
+					}
+					rowTemplate.Execute(w, data)
+				}
 			}
 		}
 		fmt.Fprintf(w, "</tbody></table>")
