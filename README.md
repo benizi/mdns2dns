@@ -1,30 +1,37 @@
-# mdns2dns
+# tinytld
 
-DNS server written in Go that serves .local addresses under .4m.
+Tiny DNS server to run a mini-TLD.
+
+# Disclaimer
+
+This probably flies in the face of several DNS-related RFCs, but it's
+super-useful for a *non-public* network.
 
 # Current state
 
 Currently, it doesn't do anything with .local names.  It just lets you:
 
-1. Register your name at whatever.in.4m
+1. Register your name at whatever.in.host
 
-2. Query registered names as (any.leading.parts.)whatever.4m
+2. Query registered names as (any.leading.parts.)whatever.host
+
+3. Interact with .host names over HTTP (add/list) on a specified port.
 
 
 ## Example
 
 ```sh
-$ dig +short newname.in.4m
-$ dig +short aardmark.newname.4m
+$ dig +short newname.in.host
+$ dig +short aardmark.newname.host
 192.168.30.19 # should return a non-loopback IP of the current machine
 ```
 
 # Utility
 
-If you set Pow up to handle the domain `newname.4m`, you can serve your apps as
-`appname.newname.4m`.  Per the [Pow User's
+If you set Pow up to handle the domain `newname.host`, you can serve your apps
+as `appname.newname.host`.  Per the [Pow User's
 Manual](http://pow.cx/manual.html#section_3.1), set your POW_EXT_DOMAINS
-variable to `newname.4m`.
+variable to `newname.host`.
 
 # Disclaimer
 
